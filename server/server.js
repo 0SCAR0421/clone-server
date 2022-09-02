@@ -23,6 +23,7 @@ const { generateToken, verifyToken } = require('../lib/jwt.js');
 
 // cookie
 const cookieParser = require('cookie-parser');
+const e = require('express');
 
 // server start
 const app = express()
@@ -39,148 +40,6 @@ app.get('/', async (req, res) => {
 
 app.get('/api', async (req, res) => {
   res.send('api server')
-})
-
-app.get('/api/users', async (req, res) => {
-  const sql = 'SELECT * FROM Users'
-  const resData = await runQuery.fetchData(sql)
-
-  res.json(resData)
-})
-
-app.post('/api/questions/ask', async (req, res) => {
-  const body = req.body
-  const sql = `INSERT INTO Questions(Question_id, Question_title, Question_content, Question_Userid) VALUES(${body.Question_id}, '${body.Question_title}', '${body.Question_content}', '${body.Question_Userid}')`
-  const resData = await runQuery.fetchData(sql)
-
-  res.json(resData)
-})
-
-const promiseReaddir = (dirnameHead, dirnameTail) => {
-  return new Promise((resolve, rejects) => {
-    fs.readdir(`${__dirname}/../src/${dirnameHead}/${dirnameTail}`, (msg) => {
-      if(msg !== null) {
-        rejects(true)
-      } else {
-        resolve(false)
-      }
-    })
-  })
-}
-
-const promiseMkdir = (dirnameHead, dirnameTail) => {
-  return new Promise((resolve, rejects) => {
-    fs.mkdir(`${__dirname}/../src/${dirnameHead}/`, (msg) => rejects(msg));
-    fs.mkdir(`${__dirname}/../src/${dirnameHead}/${dirnameTail}`, (msg) => rejects(msg));
-    resolve(true)
-  })
-}
-
-const saveFile = (dirnameHead, dirnameTail, file, fileName) => {
-  return new Promise((resolve, rejects) => {
-    setTimeout(() => {
-      file.mv(`${__dirname}/../src/${dirnameHead}/${dirnameTail}/${fileName}`, err => {
-        if(err) rejects(err)
-        else {
-          resolve(`${__dirname}/../src/${dirnameHead}/${dirnameTail}/${fileName}`)
-        }
-      })
-    }, 100);
-  })
-}
-
-app.post('/api/questions/ask/image', fileUpload(), async (req, res) => {
-  const name = (Object.keys(req.files)[0])
-  const file = req.files[name]
-  console.log(file.name)
-  const dirnameHead = file.name.slice(0, file.name.length - 13)
-  const dirnameTail = file.name.slice(-13)
-  file.name = dirnameHead + Date.now() + ".png"
-
-  let dataUrl = ''
-
-  try{
-    await promiseReaddir(dirnameHead, dirnameTail)
-  } catch (e) {
-    await promiseMkdir(dirnameHead, dirnameTail)
-  }
-
-  dataUrl = await saveFile(dirnameHead, dirnameTail, file, file.name)
-  dataUrl = dataUrl.slice(38)
-  res.send(dataUrl)
-})
-
-app.post('/api/questions/vote/:qid', async (req, res) => {
-  const Question_id = req.params.qid
-  const { User_id, Vote } = req.body
-
-  const getVote = `SELECT COUNT(Vote_id) FROM Vote WHERE Vote_Userid='${User_id}' AND Vote_Qid=${Question_id}`
-  const getVoteData = await runQuery.fetchData(getVote)
-
-  if(getVoteData[0]['COUNT(Vote_id)']) {
-    const updateVoteSql = `UPDATE Vote SET Vote_target_type='${Vote}' WHERE Vote_Userid='${User_id}' AND Vote_Qid=${Question_id}`
-    const updateVoteData = await runQuery.fetchData(updateVoteSql)
-    res.json(updateVoteData)
-  } else {
-    const tryVoteSql = `INSERT INTO Vote(Vote_target_type, Vote_Userid, Vote_Qid) VALUES('${Vote}', '${User_id}', ${Question_id})`
-    const tryVoteData = await runQuery.fetchData(tryVoteSql)
-    res.json(tryVoteData)
-  }
-
-})
-
-app.get('/api/questions', async (req, res) => {
-  const page = req.query.page || 0
-  const pagesize = req.query.pagesize || 15
-
-  const getQuestionsSql = `SELECT Question_id, Question_title, Question_content, Question_createdAt, User_nickname, Question_views, (SELECT GROUP_CONCAT(Vote_target_type) FROM Vote WHERE Vote_Qid=Question_id) AS Vote, (SELECT GROUP_CONCAT(Answer_id) FROM Answer WHERE Answer_Qid=Question_id) AS Answer FROM Questions LEFT JOIN Users ON Questions.Question_UserId = Users.User_id ORDER BY Question_id DESC LIMIT ${pagesize || 15} OFFSET ${(page === 0 ? 0 : page - 1) * pagesize || 0}`
-  const getQuestionsData = await runQuery.fetchData(getQuestionsSql)
-  const getTotalQuestionsSql = `SELECT COUNT(*) AS Total_questions FROM Questions`
-  const getTotalQuestionsData = await runQuery.fetchData(getTotalQuestionsSql)
-
-  getQuestionsData.forEach((e) => {
-    if(e.Vote) {
-      const data = e.Vote.split(',')
-      e.Vote = data.reduce((acc, cur) => {
-        return acc + Number(cur)
-      }, 0)
-    } else {
-      e.Vote = 0
-    }
-    if(e.Answer) {
-      const data = e.Answer.split(',')
-      const count = data.length
-      e.Answer = count
-    } else {
-      e.Answer = 0
-    }
-  })
-
-  res.json([...getTotalQuestionsData, ...getQuestionsData])
-})
-
-app.get('/api/questions/:qid', async (req, res) => {
-  const Question_id = req.params.qid
-  const answerdSql = `SELECT Answer_id, Answer_content, Answer_createdAt, User_nickname FROM Answer LEFT JOIN Users ON Answer.Answer_UserId = Users.User_id WHERE Answer_Qid=${Question_id}`
-  const commentSql = `SELECT Comment_id, Comment_UserId, Comment_content, Comment_createdAt, User_nickname FROM Comment LEFT JOIN Users ON Comment.Comment_UserId = Users.User_id WHERE Comment_Qid=${Question_id}`
-  const voteSql = `SELECT Vote_target_type, Vote_Userid FROM Vote WHERE Vote_Qid=${Question_id}`
-  const resData = {}
-
-  resData.answer = await runQuery.fetchData(answerdSql)
-  resData.comment = await runQuery.fetchData(commentSql)
-  resData.vote = await runQuery.fetchData(voteSql)
-
-  res.json(resData)
-})
-
-app.patch('/api/questions/:qid', async (req, res) => {
-  const Question_id = req.params.qid
-  const checkViewSql = `SELECT Question_views FROM Questions WHERE Question_id=${Question_id}`
-  const views = await runQuery.fetchData(checkViewSql)
-  const viewsSql = `UPDATE Questions SET Question_views=${++views[0].Question_views} WHERE Question_id=${Question_id}`
-  await runQuery.fetchData(viewsSql)
-
-  res.json({state: true, msg: "OK"})
 })
 
 app.post('/api/user/signup', async (req, res) => {
@@ -249,6 +108,18 @@ app.post('/api/user/login', async (req, res) => {
   }
 })
 
+app.get('/api/user/logout', async (req, res) => {
+  const cookieOptions = {
+    // domain: 'https://8it.kro.kr', 
+    // Path: '/', 
+    httpOnly: true, 
+    secure: true, 
+    sameSite: 'none'
+  }
+
+  res.clearCookie('access_jwt', cookieOptions).send()
+})
+
 app.get('/api/user/checklogin', async (req, res) => {
   const verifyData = await verifyToken('access', req.cookies.access_jwt)
   if(verifyData){
@@ -256,6 +127,197 @@ app.get('/api/user/checklogin', async (req, res) => {
   } else {
     res.json({state: false, msg: 'The token does not exist or has expired.'})
   }
+})
+
+app.get('/api/users', async (req, res) => {
+  const sql = 'SELECT * FROM Users'
+  const resData = await runQuery.fetchData(sql)
+
+  res.json(resData)
+})
+
+app.post('/api/questions/ask', async (req, res) => {
+  const body = req.body
+  const sql = `INSERT INTO Questions(Question_id, Question_title, Question_content, Question_Userid) VALUES(${body.Question_id}, '${body.Question_title}', '${body.Question_content}', '${body.Question_Userid}')`
+  await runQuery.fetchData(sql)
+
+  res.json({state: true, msg: "OK"})
+})
+
+const promiseReaddir = (dirnameHead, dirnameTail) => {
+  return new Promise((resolve, rejects) => {
+    fs.readdir(`${__dirname}/../src/${dirnameHead}/${dirnameTail}`, (msg) => {
+      if(msg !== null) {
+        rejects(true)
+      } else {
+        resolve(false)
+      }
+    })
+  })
+}
+
+const promiseMkdir = (dirnameHead, dirnameTail) => {
+  return new Promise((resolve, rejects) => {
+    fs.mkdir(`${__dirname}/../src/${dirnameHead}/`, (msg) => rejects(msg));
+    fs.mkdir(`${__dirname}/../src/${dirnameHead}/${dirnameTail}`, (msg) => rejects(msg));
+    resolve(true)
+  })
+}
+
+const saveFile = (dirnameHead, dirnameTail, file, fileName) => {
+  return new Promise((resolve, rejects) => {
+    setTimeout(() => {
+      file.mv(`${__dirname}/../src/${dirnameHead}/${dirnameTail}/${fileName}`, err => {
+        if(err) rejects(err)
+        else {
+          resolve(`${__dirname}/../src/${dirnameHead}/${dirnameTail}/${fileName}`)
+        }
+      })
+    }, 500);
+  })
+}
+
+app.post('/api/questions/ask/image', fileUpload(), async (req, res) => {
+  const name = (Object.keys(req.files)[0])
+  const file = req.files[name]
+  console.log(file.name)
+  const dirnameHead = file.name.slice(0, file.name.length - 13)
+  const dirnameTail = file.name.slice(-13)
+  file.name = dirnameHead + Date.now() + ".png"
+
+  let dataUrl = ''
+
+  try{
+    await promiseReaddir(dirnameHead, dirnameTail)
+  } catch (e) {
+    await promiseMkdir(dirnameHead, dirnameTail)
+  }
+
+  dataUrl = await saveFile(dirnameHead, dirnameTail, file, file.name)
+  dataUrl = dataUrl.slice(38)
+  res.send(dataUrl)
+})
+
+app.get('/api/questions', async (req, res) => {
+  const page = req.query.page || 0
+  const pagesize = req.query.pagesize || 15
+
+  const getQuestionsSql = `SELECT Question_id, Question_title, Question_content, Question_createdAt, User_nickname, User_id, User_email, Question_views, (SELECT GROUP_CONCAT(Vote_target_type) FROM Vote WHERE Vote_Qid=Question_id) AS Vote, (SELECT GROUP_CONCAT(Answer_id) FROM Answer WHERE Answer_Qid=Question_id) AS Answer FROM Questions LEFT JOIN Users ON Questions.Question_UserId = Users.User_id ORDER BY Question_id DESC LIMIT ${pagesize || 15} OFFSET ${(page === 0 ? 0 : page - 1) * pagesize || 0}`
+  const getQuestionsData = await runQuery.fetchData(getQuestionsSql)
+  const getTotalQuestionsSql = `SELECT COUNT(*) AS Total_questions FROM Questions`
+  const getTotalQuestionsData = await runQuery.fetchData(getTotalQuestionsSql)
+
+  getQuestionsData.forEach((e) => {
+    if(e.Vote) {
+      const data = e.Vote.split(',')
+      e.Vote = data.reduce((acc, cur) => {
+        return acc + Number(cur)
+      }, 0)
+    } else {
+      e.Vote = 0
+    }
+    if(e.Answer) {
+      const data = e.Answer.split(',')
+      const count = data.length
+      e.Answer = count
+    } else {
+      e.Answer = 0
+    }
+  })
+
+  res.json([...getTotalQuestionsData, ...getQuestionsData])
+})
+
+app.get('/api/questions/:qid', async (req, res) => {
+  const Question_id = req.params.qid
+  const getQuestionsSql = `SELECT Question_id, Question_title, Question_content, Question_createdAt, User_nickname, User_id, User_email, Question_views, (SELECT GROUP_CONCAT(Vote_target_type) FROM Vote WHERE Vote_Qid=Question_id) AS Vote, (SELECT GROUP_CONCAT(Answer_id) FROM Answer WHERE Answer_Qid=Question_id) AS Answer FROM Questions LEFT JOIN Users ON Questions.Question_UserId = Users.User_id WHERE Question_id='${Question_id}'`
+  const answerdSql = `SELECT Answer_id, Answer_content, Answer_createdAt, User_nickname FROM Answer LEFT JOIN Users ON Answer.Answer_UserId = Users.User_id WHERE Answer_Qid=${Question_id}`
+  const commentSql = `SELECT Comment_id, Comment_UserId, Comment_content, Comment_createdAt, User_nickname FROM Comment LEFT JOIN Users ON Comment.Comment_UserId = Users.User_id WHERE Comment_Qid=${Question_id}`
+  const voteSql = `SELECT Vote_target_type, Vote_Userid FROM Vote WHERE Vote_Qid=${Question_id}`
+  const resData = {}
+
+  resData.Question = (await runQuery.fetchData(getQuestionsSql))[0]
+  resData.answer = await runQuery.fetchData(answerdSql)
+  resData.comment = await runQuery.fetchData(commentSql)
+  resData.vote = await runQuery.fetchData(voteSql)
+  res.json(resData)
+})
+
+app.post('/api/questions/vote/:qid', async (req, res) => {
+  const Question_id = req.params.qid
+  const { User_id, Vote } = req.body
+
+  const getVote = `SELECT COUNT(Vote_id) FROM Vote WHERE Vote_Userid='${User_id}' AND Vote_Qid=${Question_id}`
+  const getVoteData = await runQuery.fetchData(getVote)
+
+  if(getVoteData[0]['COUNT(Vote_id)']) {
+    const updateVoteSql = `UPDATE Vote SET Vote_target_type='${Vote}' WHERE Vote_Userid='${User_id}' AND Vote_Qid=${Question_id}`
+    const updateVoteData = await runQuery.fetchData(updateVoteSql)
+    res.json(updateVoteData)
+  } else {
+    const tryVoteSql = `INSERT INTO Vote(Vote_target_type, Vote_Userid, Vote_Qid) VALUES('${Vote}', '${User_id}', ${Question_id})`
+    const tryVoteData = await runQuery.fetchData(tryVoteSql)
+    res.json(tryVoteData)
+  }
+})
+
+app.patch('/api/questions/:qid', async (req, res) => {
+  const Question_id = req.params.qid
+  const body = req.body
+  const resData = {}
+  const checkQuestionsSql = `SELECT Question_views, Question_Userid FROM Questions WHERE Question_id=${Question_id}`
+  const checkQuestionsData = await runQuery.fetchData(checkQuestionsSql)
+
+  if(body.type === 'modify' && checkQuestionsData.length){
+    if(checkQuestionsData[0].Question_Userid === body.User_id){
+      const modifySql = `UPDATE Questions SET Question_content='${req.body.Question_content}' WHERE Question_id=${Question_id}`
+      await runQuery.fetchData(modifySql)
+      resData.state = true
+      resData.msg = "OK"
+    } else {
+      resData.state = false
+      resData.msg = "No permission"
+    }
+  } else if(checkQuestionsData.length) {
+    const viewsSql = `UPDATE Questions SET Question_views=${++checkQuestionsData[0].Question_views} WHERE Question_id=${Question_id}`
+    await runQuery.fetchData(viewsSql)
+    resData.state = true
+    resData.msg = "OK"
+  } else {
+    resData.state = false
+    resData.msg = "Err"
+  }
+
+  res.json(resData)
+})
+
+app.delete('/api/questions/:qid', async (req, res) => {
+  const Question_id = req.params.qid
+
+  const checkOwner = `SELECT Question_Userid FROM Questions WHERE Question_Userid=${Question_id}`
+  const isOwner = await runQuery.fetchData(checkOwner)
+  if(isOwner.length) return res.send({state: false, msg: "No permission"})
+
+  const deleteVoteSql = `DELETE FROM Vote WHERE Vote_Qid=${Question_id}`
+  const deleteCommentSql = `DELETE FROM Comment WHERE Comment_Qid=${Question_id}`
+  const deleteAnswerSql = `DELETE FROM Answer WHERE Answer_Qid=${Question_id}`
+  const deleteQuestionSql = `DELETE FROM Questions WHERE Question_id=${Question_id}`
+
+  await runQuery.fetchData(deleteVoteSql)
+  await runQuery.fetchData(deleteCommentSql)
+  await runQuery.fetchData(deleteAnswerSql)
+  await runQuery.fetchData(deleteQuestionSql)
+
+  res.json({state: true, msg: "OK"})
+})
+
+app.post('/api/questions/answer/:qid', async (req, res) => {
+  const Question_id = req.params.qid
+  const body = req.body
+  const sql = `INSERT INTO Answer(Answer_id, Answer_content, Answer_UserId, Answer_Qid) VALUES(${body.Answer_id}, '${body.Answer_content}', '${body.Answer_UserId}', '${Question_id}')`
+  await runQuery.fetchData(sql)
+
+  res.json({state: true, msg: "OK"})
 })
 
 try {
