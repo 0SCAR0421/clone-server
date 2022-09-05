@@ -270,7 +270,7 @@ app.patch('/api/questions/:qid', async (req, res) => {
 
   if(body.type === 'modify' && checkQuestionsData.length){
     if(checkQuestionsData[0].Question_Userid === body.User_id){
-      const modifySql = `UPDATE Questions SET Question_content='${req.body.Question_content}' WHERE Question_id=${Question_id}`
+      const modifySql = `UPDATE Questions SET Question_content='${body.Question_content}', Question_title='${body.Question_title}' WHERE Question_id=${Question_id}`
       await runQuery.fetchData(modifySql)
       resData.state = true
       resData.msg = "OK"
