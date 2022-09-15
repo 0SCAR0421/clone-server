@@ -23,7 +23,6 @@ const { generateToken, verifyToken } = require('../lib/jwt.js');
 
 // cookie
 const cookieParser = require('cookie-parser');
-const e = require('express');
 
 // server start
 const app = express()
@@ -33,6 +32,7 @@ app.use(express.urlencoded({ extended: true }))
 app.use(express.json())
 app.use(static(__dirname + "/../"))
 app.use(cookieParser())
+app.set("trust proxy", 1);
 
 app.get('/', async (req, res) => {
   res.send('hello world')
@@ -87,7 +87,7 @@ app.post('/api/user/login', async (req, res) => {
     res.json({state: false, msg: 'No Match ID or Password'})
   } else {
     const cookieOptions = {
-      // domain: 'https://8it.kro.kr', 
+      // domain: 'localhost', 
       // Path: '/', 
       httpOnly: true, 
       secure: true, 
@@ -110,11 +110,11 @@ app.post('/api/user/login', async (req, res) => {
 
 app.get('/api/user/logout', async (req, res) => {
   const cookieOptions = {
-    // domain: 'https://8it.kro.kr', 
+    // domain: 'localhost', 
     // Path: '/', 
-    httpOnly: true, 
-    secure: true, 
-    sameSite: 'none'
+      httpOnly: true, 
+      secure: true, 
+      sameSite: 'none'
   }
 
   res.clearCookie('access_jwt', cookieOptions).send()
